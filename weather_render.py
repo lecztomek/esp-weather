@@ -1,13 +1,21 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime
+from datetime import datetime, date
+import requests
 
 OUT = Path("public")
 OUT.mkdir(exist_ok=True)
 
 W, H = 240, 240
 
-HOURS = ["00", "03", "06", "09", "12", "15", "18", "21"]
+# Nowy Sącz mniej więcej
+LATITUDE = 49.6175
+LONGITUDE = 20.7153
+TIMEZONE = "Europe/Warsaw"
+
+HOURS_WANTED = ["00", "03", "06", "09", "12", "15", "18", "21"]
+
+DAY_TITLES = ["DZISIAJ", "JUTRO", "POJUTRZE"]
 
 
 def load_font(size, bold=False):
@@ -141,25 +149,12 @@ def draw_icon_storm(draw, cx, cy):
 
 
 def draw_icon_fog(draw, cx, cy):
-    fog_dark = (120, 135, 155)
-    fog_mid = (155, 170, 190)
-    fog_light = (190, 200, 215)
+    fog = (145, 160, 180)
 
-    lines = [
-        (cy - 15, cx - 24, cx + 20, fog_light, 3),
-        (cy - 7,  cx - 18, cx + 27, fog_mid,   4),
-        (cy + 1,  cx - 27, cx + 16, fog_dark,  4),
-        (cy + 9,  cx - 20, cx + 25, fog_mid,   4),
-        (cy + 17, cx - 25, cx + 18, fog_light, 3),
-    ]
-
-    for y, x0, x1, color, width in lines:
-        draw.line((x0, y, x1, y), fill=color, width=width)
-
-    # Małe przerwane fragmenty, żeby ikona nie była zbyt równa
-    draw.line((cx + 23, cy + 1, cx + 30, cy + 1), fill=fog_dark, width=4)
-    draw.line((cx - 30, cy - 7, cx - 23, cy - 7), fill=fog_mid, width=4)
-    draw.line((cx + 21, cy + 17, cx + 28, cy + 17), fill=fog_light, width=3)
+    draw.line((cx - 26, cy - 12, cx + 26, cy - 12), fill=fog, width=4)
+    draw.line((cx - 18, cy - 3,  cx + 20, cy - 3),  fill=fog, width=4)
+    draw.line((cx - 26, cy + 6,  cx + 26, cy + 6),  fill=fog, width=4)
+    draw.line((cx - 18, cy + 15, cx + 20, cy + 15), fill=fog, width=4)
 
 
 def draw_icon_sleet(draw, cx, cy):
@@ -168,11 +163,9 @@ def draw_icon_sleet(draw, cx, cy):
     blue = (45, 135, 215)
     ice = (80, 160, 220)
 
-    # Krople
     for x in [cx - 13, cx + 13]:
         draw.line((x, cy + 22, x - 4, cy + 32), fill=blue, width=3)
 
-    # Śnieżka w środku
     x = cx
     y = cy + 29
     draw.line((x - 4, y, x + 4, y), fill=ice, width=2)
@@ -202,65 +195,143 @@ def draw_weather_icon(draw, weather, cx, cy):
         draw_icon_cloud(draw, cx, cy)
 
 
-def make_demo_screens():
-    return [
-        {
-            "filename": "screen_0.png",
-            "title": "DZISIAJ",
-            "weather": "partly",
-            "temps": [-1, -2, -1, 2, 5, 4, 2, 1],
-            "rain": [0, 0, 0, 0, 0, 1, 2, 1],
-        },
-        {
-            "filename": "screen_1.png",
-            "title": "JUTRO",
-            "weather": "sun",
-            "temps": [1, 0, 0, 3, 6, 5, 3, 2],
-            "rain": [0, 0, 0, 0, 0, 0, 1, 2],
-        },
-        {
-            "filename": "screen_2.png",
-            "title": "POJUTRZE",
-            "weather": "rain",
-            "temps": [0, -1, -1, 1, 3, 2, 1, 0],
-            "rain": [0, 0, 1, 2, 3, 2, 1, 0],
-        },
-        {
-            "filename": "screen_3.png",
-            "title": "CHMURY",
-            "weather": "cloud",
-            "temps": [2, 2, 1, 3, 4, 4, 3, 2],
-            "rain": [0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        {
-            "filename": "screen_4.png",
-            "title": "SNIEG",
-            "weather": "snow",
-            "temps": [-4, -5, -5, -3, -1, -2, -3, -4],
-            "rain": [1, 1, 2, 3, 2, 1, 1, 0],
-        },
-        {
-            "filename": "screen_5.png",
-            "title": "BURZA",
-            "weather": "storm",
-            "temps": [15, 14, 14, 17, 22, 24, 20, 17],
-            "rain": [0, 0, 1, 3, 8, 12, 6, 2],
-        },
-        {
-            "filename": "screen_6.png",
-            "title": "MGLA",
-            "weather": "fog",
-            "temps": [1, 0, 0, 1, 3, 4, 3, 2],
-            "rain": [0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        {
-            "filename": "screen_7.png",
-            "title": "DESZCZ SN",
-            "weather": "sleet",
-            "temps": [1, 1, 0, 1, 2, 1, 0, 0],
-            "rain": [0, 1, 2, 3, 2, 2, 1, 0],
-        },
+def map_weather_code(code):
+    # Open-Meteo WMO weather codes:
+    # 0 clear
+    # 1,2 partly cloudy
+    # 3 overcast
+    # 45,48 fog
+    # 51-67 drizzle/rain/freezing rain
+    # 71-86 snow
+    # 95-99 thunderstorm
+
+    if code == 0:
+        return "sun"
+
+    if code in [1, 2]:
+        return "partly"
+
+    if code == 3:
+        return "cloud"
+
+    if code in [45, 48]:
+        return "fog"
+
+    if code in [56, 57, 66, 67]:
+        return "sleet"
+
+    if code in [51, 53, 55, 61, 63, 65, 80, 81, 82]:
+        return "rain"
+
+    if code in [71, 73, 75, 77, 85, 86]:
+        return "snow"
+
+    if code in [95, 96, 99]:
+        return "storm"
+
+    return "cloud"
+
+
+def fetch_open_meteo():
+    url = "https://api.open-meteo.com/v1/forecast"
+
+    params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "hourly": "temperature_2m,precipitation,weather_code",
+        "forecast_days": 3,
+        "timezone": TIMEZONE,
+    }
+
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def pick_day_weather_icon(codes):
+    priority = [
+        "storm",
+        "snow",
+        "sleet",
+        "rain",
+        "fog",
+        "cloud",
+        "partly",
+        "sun",
     ]
+
+    mapped = [map_weather_code(code) for code in codes]
+
+    for icon in priority:
+        if icon in mapped:
+            return icon
+
+    return "cloud"
+
+
+def build_screens_from_forecast(data):
+    hourly = data["hourly"]
+
+    times = hourly["time"]
+    temperatures = hourly["temperature_2m"]
+    precipitation = hourly["precipitation"]
+    weather_codes = hourly["weather_code"]
+
+    by_day = {}
+
+    for t, temp, rain, code in zip(times, temperatures, precipitation, weather_codes):
+        # Format z Open-Meteo: YYYY-MM-DDTHH:MM
+        day_str = t[:10]
+        hour_str = t[11:13]
+
+        if hour_str not in HOURS_WANTED:
+            continue
+
+        by_day.setdefault(day_str, []).append(
+            {
+                "hour": hour_str,
+                "temp": temp,
+                "rain": rain,
+                "code": code,
+            }
+        )
+
+    days = sorted(by_day.keys())[:3]
+    screens = []
+
+    for idx, day_str in enumerate(days):
+        rows = sorted(by_day[day_str], key=lambda x: x["hour"])
+
+        # Gdyby API z jakiegoś powodu nie dało kompletu godzin, uzupełniamy bez crasha.
+        row_by_hour = {r["hour"]: r for r in rows}
+        final_rows = []
+
+        for hour in HOURS_WANTED:
+            if hour in row_by_hour:
+                final_rows.append(row_by_hour[hour])
+
+        temps = [int(round(r["temp"])) for r in final_rows]
+        rain = [int(round(r["rain"])) for r in final_rows]
+        codes = [int(r["code"]) for r in final_rows]
+
+        if not temps:
+            continue
+
+        title = DAY_TITLES[idx] if idx < len(DAY_TITLES) else day_str
+
+        screens.append(
+            {
+                "filename": f"screen_{idx}.png",
+                "title": title,
+                "weather": pick_day_weather_icon(codes),
+                "temps": temps,
+                "rain": rain,
+                "hours": [r["hour"] for r in final_rows],
+                "source_date": day_str,
+            }
+        )
+
+    return screens
 
 
 def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
@@ -289,7 +360,7 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
     n = len(temps)
 
     for i, temp in enumerate(temps):
-        x = x0 + 10 + i * ((x1 - x0 - 20) / (n - 1))
+        x = x0 + 10 + i * ((x1 - x0 - 20) / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
         y = y1 - 8 - ratio * (y1 - y0 - 16)
         points.append((int(x), int(y)))
@@ -348,7 +419,8 @@ def draw_screen(data):
     img = Image.new("RGB", (W, H), (235, 241, 248))
     d = ImageDraw.Draw(img)
 
-    # Główna karta
+    hours = data.get("hours", HOURS_WANTED)
+
     d.rounded_rectangle(
         (5, 5, 235, 235),
         radius=18,
@@ -356,7 +428,6 @@ def draw_screen(data):
         outline=(210, 220, 232),
     )
 
-    # Header
     d.rounded_rectangle(
         (9, 9, 231, 50),
         radius=14,
@@ -369,16 +440,14 @@ def draw_screen(data):
     bbox = d.textbbox((0, 0), title, font=font_title)
     tw = bbox[2] - bbox[0]
 
-    # Lekko przesunięte w prawo, bo ikona jest po lewej
     d.text((138 - tw // 2, 16), title, font=font_title, fill=(255, 255, 255))
 
-    # Sekcja godzin i temperatur
     x0, x1 = 11, 229
     y_hours = 61
     y_temps = 81
-    col_w = (x1 - x0) / len(HOURS)
+    col_w = (x1 - x0) / len(hours)
 
-    for i, hour in enumerate(HOURS):
+    for i, hour in enumerate(hours):
         cx = int(x0 + col_w * i + col_w / 2)
 
         text_center(
@@ -410,7 +479,7 @@ def draw_screen(data):
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
 
 
-def write_index(screens):
+def write_index(screens, source_info):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     cards = []
@@ -419,6 +488,7 @@ def write_index(screens):
         title = screen["title"]
         filename = screen["filename"]
         weather = screen["weather"]
+        source_date = screen.get("source_date", "")
 
         cards.append(
             f"""
@@ -427,6 +497,7 @@ def write_index(screens):
       <img src="{filename}">
       <p><code>{filename}</code></p>
       <p class="muted">ikona: <code>{weather}</code></p>
+      <p class="muted">data prognozy: <code>{source_date}</code></p>
     </div>
 """
         )
@@ -476,6 +547,7 @@ def write_index(screens):
 <body>
   <h1>ESP Weather Screens</h1>
   <p>Wygenerowano: <strong>{generated}</strong></p>
+  <p class="muted">{source_info}</p>
 
   <div class="screens">
 {cards_html}
@@ -488,14 +560,19 @@ def write_index(screens):
 
 
 def main():
-    screens = make_demo_screens()
+    forecast = fetch_open_meteo()
+    screens = build_screens_from_forecast(forecast)
+
+    if not screens:
+        raise RuntimeError("Nie udało się zbudować żadnego ekranu z danych pogodowych")
 
     for screen in screens:
         draw_screen(screen)
 
-    write_index(screens)
+    source_info = f"Źródło: Open-Meteo, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
+    write_index(screens, source_info)
 
-    print("Generated screens in public/")
+    print("Generated real weather screens in public/")
 
 
 if __name__ == "__main__":
