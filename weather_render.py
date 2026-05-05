@@ -275,21 +275,30 @@ def pick_day_weather_icon(codes, rain):
         return "fog"
 
     sunny_slots = sum(1 for code in codes if code == 0)
+    partly_slots = sum(1 for code in codes if code in [1, 2])
+    cloudy_slots = sum(1 for code in codes if code == 3)
 
     rain_by_mm = any(mm >= 0.2 for mm in rain)
     rain_by_code = any(icon == "rain" for icon in mapped)
 
     has_rain = rain_by_mm or rain_by_code
 
-    if sunny_slots >= 3:
-        base = "sun"
-    else:
-        base = "partly"
+    has_sun = sunny_slots + partly_slots >= 4
+    mostly_cloudy = cloudy_slots > sunny_slots + partly_slots
 
     if has_rain:
-        return "sunrain"
+        if has_sun and not mostly_cloudy:
+            return "sunrain"
 
-    return base
+        return "rain"
+
+    if sunny_slots >= 3:
+        return "sun"
+
+    if partly_slots >= 2:
+        return "partly"
+
+    return "cloud"
 
 
 def build_screens_from_forecast(data):
@@ -458,8 +467,13 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
     temp_h = temp_bottom - temp_top
 
     # Opady: słupki zawsze od dolnej krawędzi wykresu.
+    #
+    # Skala:
+    # - największy opad danego dnia ma wysokość rain_max_h,
+    # - pozostałe słupki są proporcjonalne do niego,
+    # - minimum 3 px tylko po to, żeby 0.1 mm było widoczne.
     max_rain = max(max(rain), 1)
-    rain_max_h = int(temp_h * 0.45)
+    rain_max_h = int(temp_h * 0.55)
 
     gap = 5
     bar_w = max(6, int((chart_w - gap * (n - 1)) / n * 0.75))
@@ -474,14 +488,7 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
         bx1 = int(cx + bar_w / 2)
 
         bh = int((mm / max_rain) * rain_max_h)
-
-        # Słupek musi być na tyle wysoki, żeby zmieścić etykietę opadu.
-        label = f"{mm:.1f}" if mm < 1 else f"{mm:.0f}"
-        bbox = draw.textbbox((0, 0), label, font=font_mm)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-
-        bh = max(bh, th + 5)
+        bh = max(bh, 3)
 
         by1 = chart_bottom
         by0 = chart_bottom - bh
@@ -492,15 +499,21 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
             fill=(70, 155, 225),
         )
 
-        # Suma opadu na słupku, od spodu.
+        label = f"{mm:.1f}" if mm < 1 else f"{mm:.0f}"
+
+        bbox = draw.textbbox((0, 0), label, font=font_mm)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        # Czarny tekst przy dole słupka, ale lekko podniesiony.
         label_x = int(cx - tw / 2)
-        label_y = by1 - th - 2
+        label_y = chart_bottom - th - 5
 
         draw.text(
             (label_x, label_y),
             label,
             font=font_mm,
-            fill=(255, 255, 255),
+            fill=(20, 25, 30),
         )
 
     # Temperatura: linia średniej.
