@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, date
+from datetime import datetime
 import requests
 
 OUT = Path("public")
@@ -104,6 +104,26 @@ def draw_icon_partly(draw, cx, cy):
     draw.rounded_rectangle((cx - 18, cy + 7, cx + 29, cy + 21), radius=7, fill=fill, outline=outline, width=2)
 
 
+def draw_icon_sunrain(draw, cx, cy):
+    # Słońce z lewej/góry
+    draw_icon_sun(draw, cx - 9, cy - 7)
+
+    fill = (235, 240, 248)
+    outline = (160, 175, 195)
+
+    # Chmurka na wierzchu
+    draw.ellipse((cx - 17, cy + 0, cx + 1, cy + 18), fill=fill, outline=outline, width=2)
+    draw.ellipse((cx - 5, cy - 8, cx + 17, cy + 15), fill=fill, outline=outline, width=2)
+    draw.ellipse((cx + 9, cy + 1, cx + 27, cy + 18), fill=fill, outline=outline, width=2)
+    draw.rounded_rectangle((cx - 18, cy + 7, cx + 29, cy + 21), radius=7, fill=fill, outline=outline, width=2)
+
+    # Deszcz
+    blue = (45, 135, 215)
+
+    for x in [cx - 9, cx + 4, cx + 17]:
+        draw.line((x, cy + 23, x - 4, cy + 33), fill=blue, width=3)
+
+
 def draw_icon_rain(draw, cx, cy):
     draw_icon_cloud(draw, cx, cy - 5)
 
@@ -179,6 +199,8 @@ def draw_weather_icon(draw, weather, cx, cy):
         draw_icon_sun(draw, cx, cy)
     elif weather == "partly":
         draw_icon_partly(draw, cx, cy)
+    elif weather == "sunrain":
+        draw_icon_sunrain(draw, cx, cy)
     elif weather == "cloud":
         draw_icon_cloud(draw, cx, cy)
     elif weather == "rain":
@@ -248,25 +270,40 @@ def fetch_open_meteo():
     return response.json()
 
 
-def pick_day_weather_icon(codes):
-    priority = [
-        "storm",
-        "snow",
-        "sleet",
-        "rain",
-        "fog",
-        "cloud",
-        "partly",
-        "sun",
-    ]
-
+def pick_day_weather_icon(codes, rain):
     mapped = [map_weather_code(code) for code in codes]
 
-    for icon in priority:
-        if icon in mapped:
-            return icon
+    # Zjawiska specjalne wygrywają nad zwykłą ikoną dnia.
+    if "storm" in mapped:
+        return "storm"
 
-    return "cloud"
+    if "snow" in mapped:
+        return "snow"
+
+    if "sleet" in mapped:
+        return "sleet"
+
+    if "fog" in mapped:
+        return "fog"
+
+    # Słońce liczymy tylko jako kod 0, czyli clear sky.
+    sunny_slots = sum(1 for code in codes if code == 0)
+
+    # Deszcz liczymy zarówno po mm, jak i po kodach pogodowych.
+    rain_by_mm = any(mm >= 0.2 for mm in rain)
+    rain_by_code = any(icon == "rain" for icon in mapped)
+
+    has_rain = rain_by_mm or rain_by_code
+
+    if sunny_slots >= 3:
+        base = "sun"
+    else:
+        base = "partly"
+
+    if has_rain:
+        return "sunrain"
+
+    return base
 
 
 def build_screens_from_forecast(data):
@@ -323,11 +360,12 @@ def build_screens_from_forecast(data):
             {
                 "filename": f"screen_{idx}.png",
                 "title": title,
-                "weather": pick_day_weather_icon(codes),
+                "weather": pick_day_weather_icon(codes, rain),
                 "temps": temps,
                 "rain": rain,
                 "hours": [r["hour"] for r in final_rows],
                 "source_date": day_str,
+                "codes": codes,
             }
         )
 
@@ -489,6 +527,7 @@ def write_index(screens, source_info):
         filename = screen["filename"]
         weather = screen["weather"]
         source_date = screen.get("source_date", "")
+        codes = screen.get("codes", [])
 
         cards.append(
             f"""
@@ -498,6 +537,7 @@ def write_index(screens, source_info):
       <p><code>{filename}</code></p>
       <p class="muted">ikona: <code>{weather}</code></p>
       <p class="muted">data prognozy: <code>{source_date}</code></p>
+      <p class="muted">kody: <code>{codes}</code></p>
     </div>
 """
         )
@@ -569,7 +609,7 @@ def main():
     for screen in screens:
         draw_screen(screen)
 
-    source_info = f"Źródło: Open-Meteo, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
+    source_info = f"Źródło: Open-Meteo, Nowy Sącz, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
     write_index(screens, source_info)
 
     print("Generated real weather screens in public/")
