@@ -1,6 +1,7 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import requests
 
 OUT = Path("public")
@@ -622,7 +623,7 @@ def draw_screen(data):
 
 
 def write_index(screens, source_info):
-    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
 
     cards = []
 
