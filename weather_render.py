@@ -169,8 +169,8 @@ def draw_icon_fog(draw, cx, cy):
     fog = (145, 160, 180)
 
     draw.line((cx - 26, cy - 12, cx + 26, cy - 12), fill=fog, width=4)
-    draw.line((cx - 18, cy - 3,  cx + 20, cy - 3),  fill=fog, width=4)
-    draw.line((cx - 26, cy + 6,  cx + 26, cy + 6),  fill=fog, width=4)
+    draw.line((cx - 18, cy - 3, cx + 20, cy - 3), fill=fog, width=4)
+    draw.line((cx - 26, cy + 6, cx + 26, cy + 6), fill=fog, width=4)
     draw.line((cx - 18, cy + 15, cx + 20, cy + 15), fill=fog, width=4)
 
 
@@ -386,11 +386,9 @@ def build_screens_from_forecast(data):
     return screens
 
 
-def draw_temperature_chart(draw, temps_avg, temps_min, temps_max, x0, y0, x1, y1):
-    all_temps = temps_avg + temps_min + temps_max
-
-    min_t = min(all_temps)
-    max_t = max(all_temps)
+def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
+    min_t = min(temps)
+    max_t = max(temps)
 
     if min_t == max_t:
         min_t -= 1
@@ -410,31 +408,41 @@ def draw_temperature_chart(draw, temps_avg, temps_min, temps_max, x0, y0, x1, y1
         gy = y0 + i * (y1 - y0) // 3
         draw.line((x0 + 5, gy, x1 - 5, gy), fill=(228, 234, 242), width=1)
 
-    n = len(temps_avg)
+    points = []
+    n = len(temps)
 
-    def point_for(i, temp):
+    for i, temp in enumerate(temps):
         x = x0 + 10 + i * ((x1 - x0 - 20) / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
         y = y1 - 8 - ratio * (y1 - y0 - 16)
-        return int(x), int(y)
+        points.append((int(x), int(y)))
 
-    points_min = [point_for(i, t) for i, t in enumerate(temps_min)]
-    points_max = [point_for(i, t) for i, t in enumerate(temps_max)]
+    draw_polyline(draw, points, fill=(230, 100, 35), width=3)
 
-    draw_polyline(draw, points_max, fill=(220, 70, 45), width=2)
-    draw_polyline(draw, points_min, fill=(40, 130, 210), width=2)
+    for x, y in points:
+        draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
 
-    for x, y in points_max:
-        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(220, 70, 45))
+    draw.text((x0 + 6, y0 + 3), f"{max(temps)}°", font=font_small, fill=(120, 130, 145))
+    draw.text((x0 + 6, y1 - 14), f"{min(temps)}°", font=font_small, fill=(120, 130, 145))
 
-    for x, y in points_min:
-        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(40, 130, 210))
 
-    draw.text((x0 + 6, y0 + 3), f"{max(temps_max)}°", font=font_small, fill=(220, 70, 45))
-    draw.text((x0 + 6, y1 - 14), f"{min(temps_min)}°", font=font_small, fill=(40, 130, 210))
+def draw_temp_row(draw, values, x0, x1, y, color):
+    n = len(values)
+    col_w = (x1 - x0) / n
 
-    draw.text((x1 - 56, y0 + 3), "max", font=font_small, fill=(220, 70, 45))
-    draw.text((x1 - 28, y0 + 3), "min", font=font_small, fill=(40, 130, 210))
+    for i, value in enumerate(values):
+        cx = int(x0 + col_w * i + col_w / 2)
+
+        text = f"{value}°"
+        bbox = draw.textbbox((0, 0), text, font=font_small)
+        tw = bbox[2] - bbox[0]
+
+        draw.text(
+            (cx - tw // 2, y),
+            text,
+            font=font_small,
+            fill=color,
+        )
 
 
 def draw_rain_bars(draw, rain, x0, y0, x1, y1):
@@ -525,9 +533,9 @@ def draw_screen(data):
 
     x0, x1 = 11, 229
     y_hours = 61
-    y_temps = 81
     col_w = (x1 - x0) / len(hours)
 
+    # Godziny
     for i, hour in enumerate(hours):
         cx = int(x0 + col_w * i + col_w / 2)
 
@@ -539,29 +547,33 @@ def draw_screen(data):
             (80, 90, 105),
         )
 
-        temp = f'{data["temps"][i]}°'
-        text_center(
-            d,
-            (cx - 14, y_temps, cx + 14, y_temps + 16),
-            temp,
-            font_temp,
-            (20, 30, 45),
-        )
-
-    d.line((13, 104, 227, 104), fill=(225, 232, 240), width=1)
-
-    draw_temperature_chart(
+    # Czerwone maxy nad wykresem
+    draw_temp_row(
         d,
-        data["temps"],
-        data["temps_min"],
         data["temps_max"],
-        12,
-        111,
-        228,
-        164,
+        11,
+        229,
+        80,
+        (220, 70, 45),
     )
 
-    draw_rain_bars(d, data["rain"], 12, 172, 228, 224)
+    d.line((13, 100, 227, 100), fill=(225, 232, 240), width=1)
+
+    # Wykres średniej temperatury
+    draw_temperature_chart(d, data["temps"], 12, 106, 228, 158)
+
+    # Niebieskie miny pod wykresem, nad opadami
+    draw_temp_row(
+        d,
+        data["temps_min"],
+        11,
+        229,
+        160,
+        (40, 130, 210),
+    )
+
+    # Opady
+    draw_rain_bars(d, data["rain"], 12, 176, 228, 224)
 
     png_path = OUT / data["filename"]
     jpg_path = OUT / data["filename"].replace(".png", ".jpg")
