@@ -70,7 +70,7 @@ def make_test_day(day_offset):
     base = datetime.now() + timedelta(days=day_offset)
 
     if day_offset == 0:
-        temps = [-1, -2, -1, 2, 5, 4, 2, 1]
+        temps = [-10, -2, 5, 5, 5, 4, 2, 1]
         rain =  [0,  0,  0, 0, 0, 1, 2, 1]
         weather = "partly"
         title = "DZISIAJ"
