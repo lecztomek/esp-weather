@@ -507,7 +507,7 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
 
         # Czarny tekst nad słupkiem.
         label_x = int(cx - tw / 2)
-        label_y = by0 - th - 2
+        label_y = by0 - th - 5
 
         # Jeśli etykieta weszłaby za wysoko, trzymaj ją w obszarze wykresu.
         if label_y < chart_top + 18:
