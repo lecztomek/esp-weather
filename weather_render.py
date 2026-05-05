@@ -105,19 +105,16 @@ def draw_icon_partly(draw, cx, cy):
 
 
 def draw_icon_sunrain(draw, cx, cy):
-    # Słońce z lewej/góry
     draw_icon_sun(draw, cx - 9, cy - 7)
 
     fill = (235, 240, 248)
     outline = (160, 175, 195)
 
-    # Chmurka na wierzchu
     draw.ellipse((cx - 17, cy + 0, cx + 1, cy + 18), fill=fill, outline=outline, width=2)
     draw.ellipse((cx - 5, cy - 8, cx + 17, cy + 15), fill=fill, outline=outline, width=2)
     draw.ellipse((cx + 9, cy + 1, cx + 27, cy + 18), fill=fill, outline=outline, width=2)
     draw.rounded_rectangle((cx - 18, cy + 7, cx + 29, cy + 21), radius=7, fill=fill, outline=outline, width=2)
 
-    # Deszcz
     blue = (45, 135, 215)
 
     for x in [cx - 9, cx + 4, cx + 17]:
@@ -218,15 +215,6 @@ def draw_weather_icon(draw, weather, cx, cy):
 
 
 def map_weather_code(code):
-    # Open-Meteo WMO weather codes:
-    # 0 clear
-    # 1,2 partly cloudy
-    # 3 overcast
-    # 45,48 fog
-    # 51-67 drizzle/rain/freezing rain
-    # 71-86 snow
-    # 95-99 thunderstorm
-
     if code == 0:
         return "sun"
 
@@ -273,7 +261,6 @@ def fetch_open_meteo():
 def pick_day_weather_icon(codes, rain):
     mapped = [map_weather_code(code) for code in codes]
 
-    # Zjawiska specjalne wygrywają nad zwykłą ikoną dnia.
     if "storm" in mapped:
         return "storm"
 
@@ -286,10 +273,8 @@ def pick_day_weather_icon(codes, rain):
     if "fog" in mapped:
         return "fog"
 
-    # Słońce liczymy tylko jako kod 0, czyli clear sky.
     sunny_slots = sum(1 for code in codes if code == 0)
 
-    # Deszcz liczymy zarówno po mm, jak i po kodach pogodowych.
     rain_by_mm = any(mm >= 0.2 for mm in rain)
     rain_by_code = any(icon == "rain" for icon in mapped)
 
@@ -317,7 +302,6 @@ def build_screens_from_forecast(data):
     by_day = {}
 
     for t, temp, rain, code in zip(times, temperatures, precipitation, weather_codes):
-        # Format z Open-Meteo: YYYY-MM-DDTHH:MM
         day_str = t[:10]
         hour = int(t[11:13])
 
@@ -333,8 +317,6 @@ def build_screens_from_forecast(data):
     days = sorted(by_day.keys())[:3]
     screens = []
 
-    # Godziny ekranowe są początkiem przedziału.
-    # Dla ["00", "04", "08", "12", "16", "20"] mamy 6 bloków po 4h.
     wanted_hours_int = [int(h) for h in HOURS_WANTED]
 
     for idx, day_str in enumerate(days):
@@ -344,6 +326,8 @@ def build_screens_from_forecast(data):
             continue
 
         temps = []
+        temps_min = []
+        temps_max = []
         rain = []
         codes = []
         hours = []
@@ -362,16 +346,19 @@ def build_screens_from_forecast(data):
             if not bucket:
                 continue
 
-            # Temperatura: średnia z całego przedziału.
-            temp_avg = sum(float(r["temp"]) for r in bucket) / len(bucket)
+            bucket_temps = [float(r["temp"]) for r in bucket]
 
-            # Opad: suma z całego przedziału.
+            temp_min = min(bucket_temps)
+            temp_max = max(bucket_temps)
+            temp_avg = sum(bucket_temps) / len(bucket_temps)
+
             rain_sum = sum(float(r["rain"] or 0) for r in bucket)
-
-            # Kody: wszystkie kody z przedziału, żeby ikona dnia wiedziała o deszczu/burzy itd.
             bucket_codes = [int(r["code"]) for r in bucket]
 
             temps.append(int(round(temp_avg)))
+            temps_min.append(int(round(temp_min)))
+            temps_max.append(int(round(temp_max)))
+
             rain.append(round(rain_sum, 1))
             codes.extend(bucket_codes)
             hours.append(f"{start_hour:02d}")
@@ -387,6 +374,8 @@ def build_screens_from_forecast(data):
                 "title": title,
                 "weather": pick_day_weather_icon(codes, rain),
                 "temps": temps,
+                "temps_min": temps_min,
+                "temps_max": temps_max,
                 "rain": rain,
                 "hours": hours,
                 "source_date": day_str,
@@ -397,9 +386,11 @@ def build_screens_from_forecast(data):
     return screens
 
 
-def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
-    min_t = min(temps)
-    max_t = max(temps)
+def draw_temperature_chart(draw, temps_avg, temps_min, temps_max, x0, y0, x1, y1):
+    all_temps = temps_avg + temps_min + temps_max
+
+    min_t = min(all_temps)
+    max_t = max(all_temps)
 
     if min_t == max_t:
         min_t -= 1
@@ -419,22 +410,31 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
         gy = y0 + i * (y1 - y0) // 3
         draw.line((x0 + 5, gy, x1 - 5, gy), fill=(228, 234, 242), width=1)
 
-    points = []
-    n = len(temps)
+    n = len(temps_avg)
 
-    for i, temp in enumerate(temps):
+    def point_for(i, temp):
         x = x0 + 10 + i * ((x1 - x0 - 20) / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
         y = y1 - 8 - ratio * (y1 - y0 - 16)
-        points.append((int(x), int(y)))
+        return int(x), int(y)
 
-    draw_polyline(draw, points, fill=(230, 100, 35), width=3)
+    points_min = [point_for(i, t) for i, t in enumerate(temps_min)]
+    points_max = [point_for(i, t) for i, t in enumerate(temps_max)]
 
-    for x, y in points:
-        draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
+    draw_polyline(draw, points_max, fill=(220, 70, 45), width=2)
+    draw_polyline(draw, points_min, fill=(40, 130, 210), width=2)
 
-    draw.text((x0 + 6, y0 + 3), f"{max(temps)}°", font=font_small, fill=(120, 130, 145))
-    draw.text((x0 + 6, y1 - 14), f"{min(temps)}°", font=font_small, fill=(120, 130, 145))
+    for x, y in points_max:
+        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(220, 70, 45))
+
+    for x, y in points_min:
+        draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(40, 130, 210))
+
+    draw.text((x0 + 6, y0 + 3), f"{max(temps_max)}°", font=font_small, fill=(220, 70, 45))
+    draw.text((x0 + 6, y1 - 14), f"{min(temps_min)}°", font=font_small, fill=(40, 130, 210))
+
+    draw.text((x1 - 56, y0 + 3), "max", font=font_small, fill=(220, 70, 45))
+    draw.text((x1 - 28, y0 + 3), "min", font=font_small, fill=(40, 130, 210))
 
 
 def draw_rain_bars(draw, rain, x0, y0, x1, y1):
@@ -482,6 +482,18 @@ def draw_rain_bars(draw, rain, x0, y0, x1, y1):
         draw.text((bx + (bar_w - tw) // 2, y1 - 14), label, font=font_mm, fill=(70, 100, 130))
 
     draw.text((x0 + 6, y0 + 3), "opad mm", font=font_small, fill=(70, 100, 130))
+
+
+def save_rgb565_raw(img, path):
+    with open(path, "wb") as f:
+        for y in range(240):
+            for x in range(240):
+                r, g, b = img.getpixel((x, y))
+
+                v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+                # U Ciebie LCD działał poprawnie z zamienionymi bajtami.
+                f.write(bytes([v >> 8, v & 0xFF]))
 
 
 def draw_screen(data):
@@ -538,7 +550,17 @@ def draw_screen(data):
 
     d.line((13, 104, 227, 104), fill=(225, 232, 240), width=1)
 
-    draw_temperature_chart(d, data["temps"], 12, 111, 228, 164)
+    draw_temperature_chart(
+        d,
+        data["temps"],
+        data["temps_min"],
+        data["temps_max"],
+        12,
+        111,
+        228,
+        164,
+    )
+
     draw_rain_bars(d, data["rain"], 12, 172, 228, 224)
 
     png_path = OUT / data["filename"]
@@ -549,16 +571,6 @@ def draw_screen(data):
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
     save_rgb565_raw(img, raw_path)
 
-def save_rgb565_raw(img, path):
-    with open(path, "wb") as f:
-        for y in range(240):
-            for x in range(240):
-                r, g, b = img.getpixel((x, y))
-
-                v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-
-                # U Ciebie LCD działał poprawnie z zamienionymi bajtami.
-                f.write(bytes([v >> 8, v & 0xFF]))
 
 def write_index(screens, source_info):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
