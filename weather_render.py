@@ -43,7 +43,8 @@ font_title = load_font(25, bold=True)
 font_small = load_font(10)
 font_axis = load_font(12)
 font_temp = load_font(14, bold=True)
-font_mm = load_font(12)
+font_extreme = load_font(12, bold=True)
+font_mm = load_font(11, bold=True)
 
 
 def text_center(draw, box, text, font, fill):
@@ -386,9 +387,30 @@ def build_screens_from_forecast(data):
     return screens
 
 
-def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
-    min_t = min(temps)
-    max_t = max(temps)
+def draw_temp_row(draw, values, x0, x1, y, color):
+    n = len(values)
+    col_w = (x1 - x0) / n
+
+    for i, value in enumerate(values):
+        cx = int(x0 + col_w * i + col_w / 2)
+
+        text = f"{value}°"
+        bbox = draw.textbbox((0, 0), text, font=font_extreme)
+        tw = bbox[2] - bbox[0]
+
+        draw.text(
+            (cx - tw // 2, y),
+            text,
+            font=font_extreme,
+            fill=color,
+        )
+
+
+def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1):
+    all_temps = temps + temps_min + temps_max
+
+    min_t = min(all_temps)
+    max_t = max(all_temps)
 
     if min_t == max_t:
         min_t -= 1
@@ -404,17 +426,75 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
         outline=(220, 228, 238),
     )
 
-    for i in range(1, 3):
-        gy = y0 + i * (y1 - y0) // 3
+    for i in range(1, 4):
+        gy = y0 + i * (y1 - y0) // 4
         draw.line((x0 + 5, gy, x1 - 5, gy), fill=(228, 234, 242), width=1)
 
-    points = []
     n = len(temps)
 
+    chart_left = x0 + 12
+    chart_right = x1 - 12
+    chart_top = y0 + 10
+    chart_bottom = y1 - 19
+
+    chart_w = chart_right - chart_left
+    chart_h = chart_bottom - chart_top
+
+    # Opady: słupki od dołu, maksymalnie do połowy wykresu.
+    max_rain = max(max(rain), 1)
+    rain_max_h = int(chart_h * 0.50)
+
+    gap = 5
+    bar_w = max(6, int((chart_w - gap * (n - 1)) / n * 0.75))
+
+    for i, mm in enumerate(rain):
+        if mm <= 0:
+            continue
+
+        cx = chart_left + i * (chart_w / max(n - 1, 1))
+
+        bx0 = int(cx - bar_w / 2)
+        bx1 = int(cx + bar_w / 2)
+
+        bh = int((mm / max_rain) * rain_max_h)
+        bh = max(bh, 3)
+
+        by0 = chart_bottom - bh
+
+        draw.rounded_rectangle(
+            (bx0, by0, bx1, chart_bottom),
+            radius=2,
+            fill=(70, 155, 225),
+        )
+
+        if mm < 1:
+            label = f"{mm:.1f}"
+        else:
+            label = f"{mm:.0f}"
+
+        bbox = draw.textbbox((0, 0), label, font=font_mm)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        label_y = by0 - th - 2
+
+        if label_y < chart_top:
+            label_y = by0 + 2
+
+        draw.text(
+            (int(cx - tw / 2), label_y),
+            label,
+            font=font_mm,
+            fill=(35, 95, 160),
+        )
+
+    # Temperatura: linia średniej.
+    points = []
+
     for i, temp in enumerate(temps):
-        x = x0 + 10 + i * ((x1 - x0 - 20) / max(n - 1, 1))
+        x = chart_left + i * (chart_w / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
-        y = y1 - 8 - ratio * (y1 - y0 - 16)
+        y = chart_bottom - ratio * chart_h
         points.append((int(x), int(y)))
 
     draw_polyline(draw, points, fill=(230, 100, 35), width=3)
@@ -422,74 +502,9 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
     for x, y in points:
         draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
 
-    draw.text((x0 + 6, y0 + 3), f"{max(temps)}°", font=font_small, fill=(120, 130, 145))
-    draw.text((x0 + 6, y1 - 14), f"{min(temps)}°", font=font_small, fill=(120, 130, 145))
-
-
-def draw_temp_row(draw, values, x0, x1, y, color):
-    n = len(values)
-    col_w = (x1 - x0) / n
-
-    for i, value in enumerate(values):
-        cx = int(x0 + col_w * i + col_w / 2)
-
-        text = f"{value}°"
-        bbox = draw.textbbox((0, 0), text, font=font_small)
-        tw = bbox[2] - bbox[0]
-
-        draw.text(
-            (cx - tw // 2, y),
-            text,
-            font=font_small,
-            fill=color,
-        )
-
-
-def draw_rain_bars(draw, rain, x0, y0, x1, y1):
-    draw.rounded_rectangle(
-        (x0, y0, x1, y1),
-        radius=8,
-        fill=(246, 249, 253),
-        outline=(220, 228, 238),
-    )
-
-    max_rain = max(max(rain), 1)
-
-    n = len(rain)
-    usable_w = x1 - x0 - 16
-    gap = 3
-    bar_w = max(4, int((usable_w - gap * (n - 1)) / n))
-
-    base_y = y1 - 17
-    top_y = y0 + 8
-    chart_h = base_y - top_y
-
-    for i, mm in enumerate(rain):
-        bx = x0 + 8 + i * (bar_w + gap)
-        bh = int((mm / max_rain) * chart_h)
-        by = base_y - bh
-
-        if mm > 0:
-            draw.rounded_rectangle(
-                (bx, by, bx + bar_w, base_y),
-                radius=2,
-                fill=(40, 130, 210),
-            )
-        else:
-            draw.line((bx, base_y, bx + bar_w, base_y), fill=(190, 205, 220), width=1)
-
-        if mm == 0:
-            label = "0"
-        elif mm < 1:
-            label = f"{mm:.1f}"
-        else:
-            label = f"{mm:.0f}"
-
-        bbox = draw.textbbox((0, 0), label, font=font_mm)
-        tw = bbox[2] - bbox[0]
-        draw.text((bx + (bar_w - tw) // 2, y1 - 14), label, font=font_mm, fill=(70, 100, 130))
-
-    draw.text((x0 + 6, y0 + 3), "opad mm", font=font_small, fill=(70, 100, 130))
+    # Delikatna skala temperatury po lewej.
+    draw.text((x0 + 6, y0 + 3), f"{max(temps_max)}°", font=font_small, fill=(220, 70, 45))
+    draw.text((x0 + 6, y1 - 15), f"{min(temps_min)}°", font=font_small, fill=(40, 130, 210))
 
 
 def save_rgb565_raw(img, path):
@@ -500,7 +515,7 @@ def save_rgb565_raw(img, path):
 
                 v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 
-                # U Ciebie LCD działał poprawnie z zamienionymi bajtami.
+                # U Ciebie LCD działał poprawnie z tą kolejnością bajtów.
                 f.write(bytes([v >> 8, v & 0xFF]))
 
 
@@ -532,10 +547,10 @@ def draw_screen(data):
     d.text((138 - tw // 2, 16), title, font=font_title, fill=(255, 255, 255))
 
     x0, x1 = 11, 229
-    y_hours = 61
+    y_hours = 59
     col_w = (x1 - x0) / len(hours)
 
-    # Godziny
+    # Godziny.
     for i, hour in enumerate(hours):
         cx = int(x0 + col_w * i + col_w / 2)
 
@@ -547,33 +562,40 @@ def draw_screen(data):
             (80, 90, 105),
         )
 
-    # Czerwone maxy nad wykresem
+    # Maxy czerwone.
     draw_temp_row(
         d,
         data["temps_max"],
         11,
         229,
-        80,
+        78,
         (220, 70, 45),
     )
 
-    d.line((13, 100, 227, 100), fill=(225, 232, 240), width=1)
+    d.line((13, 98, 227, 98), fill=(225, 232, 240), width=1)
 
-    # Wykres średniej temperatury
-    draw_temperature_chart(d, data["temps"], 12, 106, 228, 158)
+    # Wspólny wykres: średnia temperatura + opad.
+    draw_combined_chart(
+        d,
+        data["temps"],
+        data["temps_min"],
+        data["temps_max"],
+        data["rain"],
+        12,
+        102,
+        228,
+        210,
+    )
 
-    # Niebieskie miny pod wykresem, nad opadami
+    # Miny niebieskie.
     draw_temp_row(
         d,
         data["temps_min"],
         11,
         229,
-        160,
+        213,
         (40, 130, 210),
     )
-
-    # Opady
-    draw_rain_bars(d, data["rain"], 12, 176, 228, 224)
 
     png_path = OUT / data["filename"]
     jpg_path = OUT / data["filename"].replace(".png", ".jpg")
