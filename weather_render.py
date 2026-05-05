@@ -319,14 +319,11 @@ def build_screens_from_forecast(data):
     for t, temp, rain, code in zip(times, temperatures, precipitation, weather_codes):
         # Format z Open-Meteo: YYYY-MM-DDTHH:MM
         day_str = t[:10]
-        hour_str = t[11:13]
-
-        if hour_str not in HOURS_WANTED:
-            continue
+        hour = int(t[11:13])
 
         by_day.setdefault(day_str, []).append(
             {
-                "hour": hour_str,
+                "hour": hour,
                 "temp": temp,
                 "rain": rain,
                 "code": code,
@@ -336,20 +333,50 @@ def build_screens_from_forecast(data):
     days = sorted(by_day.keys())[:3]
     screens = []
 
+    # Godziny ekranowe są początkiem przedziału.
+    # Dla ["00", "04", "08", "12", "16", "20"] mamy 6 bloków po 4h.
+    wanted_hours_int = [int(h) for h in HOURS_WANTED]
+
     for idx, day_str in enumerate(days):
         rows = sorted(by_day[day_str], key=lambda x: x["hour"])
 
-        # Gdyby API z jakiegoś powodu nie dało kompletu godzin, uzupełniamy bez crasha.
-        row_by_hour = {r["hour"]: r for r in rows}
-        final_rows = []
+        if not rows:
+            continue
 
-        for hour in HOURS_WANTED:
-            if hour in row_by_hour:
-                final_rows.append(row_by_hour[hour])
+        temps = []
+        rain = []
+        codes = []
+        hours = []
 
-        temps = [int(round(r["temp"])) for r in final_rows]
-        rain = [int(round(r["rain"])) for r in final_rows]
-        codes = [int(r["code"]) for r in final_rows]
+        for i, start_hour in enumerate(wanted_hours_int):
+            if i + 1 < len(wanted_hours_int):
+                end_hour = wanted_hours_int[i + 1]
+            else:
+                end_hour = 24
+
+            bucket = [
+                r for r in rows
+                if start_hour <= r["hour"] < end_hour
+            ]
+
+            if not bucket:
+                continue
+
+            # Temperatura: bierzemy godzinę startową, jeśli istnieje.
+            # Jeśli jej nie ma, bierzemy pierwszy rekord z przedziału.
+            exact = [r for r in bucket if r["hour"] == start_hour]
+            temp_row = exact[0] if exact else bucket[0]
+
+            # Opad: suma z całego przedziału.
+            rain_sum = sum(float(r["rain"] or 0) for r in bucket)
+
+            # Kody: wszystkie kody z przedziału, żeby ikona dnia wiedziała o deszczu/burzy itd.
+            bucket_codes = [int(r["code"]) for r in bucket]
+
+            temps.append(int(round(temp_row["temp"])))
+            rain.append(round(rain_sum, 1))
+            codes.extend(bucket_codes)
+            hours.append(f"{start_hour:02d}")
 
         if not temps:
             continue
@@ -363,7 +390,7 @@ def build_screens_from_forecast(data):
                 "weather": pick_day_weather_icon(codes, rain),
                 "temps": temps,
                 "rain": rain,
-                "hours": [r["hour"] for r in final_rows],
+                "hours": hours,
                 "source_date": day_str,
                 "codes": codes,
             }
@@ -445,7 +472,13 @@ def draw_rain_bars(draw, rain, x0, y0, x1, y1):
         else:
             draw.line((bx, base_y, bx + bar_w, base_y), fill=(190, 205, 220), width=1)
 
-        label = str(mm)
+        if mm == 0:
+            label = "0"
+        elif mm < 1:
+            label = f"{mm:.1f}"
+        else:
+            label = f"{mm:.0f}"
+
         bbox = draw.textbbox((0, 0), label, font=font_mm)
         tw = bbox[2] - bbox[0]
         draw.text((bx + (bar_w - tw) // 2, y1 - 14), label, font=font_mm, fill=(70, 100, 130))
