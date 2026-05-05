@@ -560,7 +560,7 @@ def save_rgb565_raw(img, path):
                 v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 
                 # U Ciebie LCD działał poprawnie z zamienionymi bajtami.
-                f.write(bytes([v & 0xFF, v >> 8]))
+                f.write(bytes([v >> 8, v & 0xFF]))
 
 def write_index(screens, source_info):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
