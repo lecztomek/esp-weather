@@ -3,6 +3,8 @@ from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import requests
+import hashlib
+import json
 
 OUT = Path("public")
 OUT.mkdir(exist_ok=True)
@@ -17,6 +19,9 @@ TIMEZONE = "Europe/Warsaw"
 HOURS_WANTED = ["00", "04", "08", "12", "16", "20"]
 
 DAY_TITLES = ["DZISIAJ", "JUTRO", "POJUTRZE"]
+
+MANIFEST_REFRESH_MS = 600000
+MANIFEST_DEFAULT_DURATION_MS = 15000
 
 
 def load_font(size, bold=False):
@@ -448,7 +453,6 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
     chart_bottom = y1 - 10
 
     chart_w = chart_right - chart_left
-    chart_h = chart_bottom - chart_top
 
     # Godziny: na wykresie, przy samej górze.
     for i, hour in enumerate(hours):
@@ -506,13 +510,13 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, 
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
-        # Czarny tekst nad słupkiem.
+        # Czarny tekst nad słupkiem, lekko odsunięty od jego górnej krawędzi.
         label_x = int(cx - tw / 2)
         label_y = by0 - th - 5
 
-        # Jeśli etykieta weszłaby za wysoko, trzymaj ją w obszarze wykresu.
-        if label_y < chart_top + 18:
-            label_y = chart_top + 18
+        # Nie pozwól wejść etykiecie w godziny.
+        if label_y < chart_top + 20:
+            label_y = chart_top + 20
 
         draw.text(
             (label_x, label_y),
@@ -622,6 +626,46 @@ def draw_screen(data):
     save_rgb565_raw(img, raw_path)
 
 
+def file_sha256(path):
+    h = hashlib.sha256()
+
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+
+    return h.hexdigest()
+
+
+def write_manifest(screens):
+    manifest = {
+        "version": 1,
+        "refresh_ms": MANIFEST_REFRESH_MS,
+        "default_duration_ms": MANIFEST_DEFAULT_DURATION_MS,
+        "generated_at": datetime.now(ZoneInfo(TIMEZONE)).isoformat(timespec="seconds"),
+        "screens": [],
+    }
+
+    for screen in screens:
+        rgb565_file = screen["filename"].replace(".png", ".rgb565")
+        rgb565_path = OUT / rgb565_file
+
+        manifest["screens"].append(
+            {
+                "file": rgb565_file,
+                "size": rgb565_path.stat().st_size,
+                "sha256": file_sha256(rgb565_path),
+                "duration_ms": MANIFEST_DEFAULT_DURATION_MS,
+            }
+        )
+
+    manifest_path = OUT / "manifest.json"
+
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def write_index(screens, source_info):
     generated = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
 
@@ -713,6 +757,8 @@ def main():
 
     for screen in screens:
         draw_screen(screen)
+
+    write_manifest(screens)
 
     source_info = f"Źródło: Open-Meteo, Nowy Sącz, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
     write_index(screens, source_info)
