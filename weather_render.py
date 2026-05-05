@@ -435,14 +435,14 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
     chart_left = x0 + 12
     chart_right = x1 - 12
     chart_top = y0 + 10
-    chart_bottom = y1 - 19
+    chart_bottom = y1 - 10
 
     chart_w = chart_right - chart_left
     chart_h = chart_bottom - chart_top
 
-    # Opady: słupki od dołu, maksymalnie do połowy wykresu.
+    # Opady: słupki zawsze od dołu wykresu.
     max_rain = max(max(rain), 1)
-    rain_max_h = int(chart_h * 0.50)
+    rain_max_h = int(chart_h * 0.45)
 
     gap = 5
     bar_w = max(6, int((chart_w - gap * (n - 1)) / n * 0.75))
@@ -459,33 +459,13 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
         bh = int((mm / max_rain) * rain_max_h)
         bh = max(bh, 3)
 
+        by1 = chart_bottom
         by0 = chart_bottom - bh
 
         draw.rounded_rectangle(
-            (bx0, by0, bx1, chart_bottom),
+            (bx0, by0, bx1, by1),
             radius=2,
             fill=(70, 155, 225),
-        )
-
-        if mm < 1:
-            label = f"{mm:.1f}"
-        else:
-            label = f"{mm:.0f}"
-
-        bbox = draw.textbbox((0, 0), label, font=font_mm)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-
-        label_y = by0 - th - 2
-
-        if label_y < chart_top:
-            label_y = by0 + 2
-
-        draw.text(
-            (int(cx - tw / 2), label_y),
-            label,
-            font=font_mm,
-            fill=(35, 95, 160),
         )
 
     # Temperatura: linia średniej.
@@ -501,11 +481,6 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
 
     for x, y in points:
         draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
-
-    # Delikatna skala temperatury po lewej.
-    draw.text((x0 + 6, y0 + 3), f"{max(temps_max)}°", font=font_small, fill=(220, 70, 45))
-    draw.text((x0 + 6, y1 - 15), f"{min(temps_min)}°", font=font_small, fill=(40, 130, 210))
-
 
 def save_rgb565_raw(img, path):
     with open(path, "wb") as f:
