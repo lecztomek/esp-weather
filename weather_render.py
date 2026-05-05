@@ -43,7 +43,7 @@ font_title = load_font(25, bold=True)
 font_small = load_font(10)
 font_axis = load_font(12)
 font_temp = load_font(14, bold=True)
-font_extreme = load_font(12, bold=True)
+font_extreme = load_font(15, bold=True)
 font_mm = load_font(11, bold=True)
 
 
@@ -406,7 +406,7 @@ def draw_temp_row(draw, values, x0, x1, y, color):
         )
 
 
-def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1):
+def draw_combined_chart(draw, temps, temps_min, temps_max, rain, hours, x0, y0, x1, y1):
     all_temps = temps + temps_min + temps_max
 
     min_t = min(all_temps)
@@ -434,15 +434,32 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
 
     chart_left = x0 + 12
     chart_right = x1 - 12
-    chart_top = y0 + 10
+    chart_top = y0 + 8
     chart_bottom = y1 - 10
 
     chart_w = chart_right - chart_left
     chart_h = chart_bottom - chart_top
 
-    # Opady: słupki zawsze od dołu wykresu.
+    # Godziny: na wykresie, przy samej górze.
+    for i, hour in enumerate(hours):
+        cx = chart_left + i * (chart_w / max(n - 1, 1))
+
+        text_center(
+            draw,
+            (int(cx - 13), y0 + 3, int(cx + 13), y0 + 17),
+            hour,
+            font_axis,
+            (80, 90, 105),
+        )
+
+    # Miejsce pod godzinami, żeby linia temperatury ich nie dotykała.
+    temp_top = chart_top + 18
+    temp_bottom = chart_bottom
+    temp_h = temp_bottom - temp_top
+
+    # Opady: słupki zawsze od dolnej krawędzi wykresu.
     max_rain = max(max(rain), 1)
-    rain_max_h = int(chart_h * 0.45)
+    rain_max_h = int(temp_h * 0.45)
 
     gap = 5
     bar_w = max(6, int((chart_w - gap * (n - 1)) / n * 0.75))
@@ -457,7 +474,14 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
         bx1 = int(cx + bar_w / 2)
 
         bh = int((mm / max_rain) * rain_max_h)
-        bh = max(bh, 3)
+
+        # Słupek musi być na tyle wysoki, żeby zmieścić etykietę opadu.
+        label = f"{mm:.1f}" if mm < 1 else f"{mm:.0f}"
+        bbox = draw.textbbox((0, 0), label, font=font_mm)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        bh = max(bh, th + 5)
 
         by1 = chart_bottom
         by0 = chart_bottom - bh
@@ -468,13 +492,24 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
             fill=(70, 155, 225),
         )
 
+        # Suma opadu na słupku, od spodu.
+        label_x = int(cx - tw / 2)
+        label_y = by1 - th - 2
+
+        draw.text(
+            (label_x, label_y),
+            label,
+            font=font_mm,
+            fill=(255, 255, 255),
+        )
+
     # Temperatura: linia średniej.
     points = []
 
     for i, temp in enumerate(temps):
         x = chart_left + i * (chart_w / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
-        y = chart_bottom - ratio * chart_h
+        y = temp_bottom - ratio * temp_h
         points.append((int(x), int(y)))
 
     draw_polyline(draw, points, fill=(230, 100, 35), width=3)
@@ -482,10 +517,13 @@ def draw_combined_chart(draw, temps, temps_min, temps_max, rain, x0, y0, x1, y1)
     for x, y in points:
         draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
 
+
 def save_rgb565_raw(img, path):
+    width, height = img.size
+
     with open(path, "wb") as f:
-        for y in range(240):
-            for x in range(240):
+        for y in range(height):
+            for x in range(width):
                 r, g, b = img.getpixel((x, y))
 
                 v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
@@ -521,43 +559,28 @@ def draw_screen(data):
 
     d.text((138 - tw // 2, 16), title, font=font_title, fill=(255, 255, 255))
 
-    x0, x1 = 11, 229
-    y_hours = 59
-    col_w = (x1 - x0) / len(hours)
-
-    # Godziny.
-    for i, hour in enumerate(hours):
-        cx = int(x0 + col_w * i + col_w / 2)
-
-        text_center(
-            d,
-            (cx - 13, y_hours, cx + 13, y_hours + 13),
-            hour,
-            font_axis,
-            (80, 90, 105),
-        )
-
     # Maxy czerwone.
     draw_temp_row(
         d,
         data["temps_max"],
         11,
         229,
-        78,
+        63,
         (220, 70, 45),
     )
 
-    d.line((13, 98, 227, 98), fill=(225, 232, 240), width=1)
+    d.line((13, 84, 227, 84), fill=(225, 232, 240), width=1)
 
-    # Wspólny wykres: średnia temperatura + opad.
+    # Wspólny wykres: godziny + średnia temperatura + opad.
     draw_combined_chart(
         d,
         data["temps"],
         data["temps_min"],
         data["temps_max"],
         data["rain"],
+        hours,
         12,
-        102,
+        88,
         228,
         210,
     )
@@ -568,7 +591,7 @@ def draw_screen(data):
         data["temps_min"],
         11,
         229,
-        213,
+        214,
         (40, 130, 210),
     )
 
