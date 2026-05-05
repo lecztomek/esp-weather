@@ -545,10 +545,22 @@ def draw_screen(data):
 
     png_path = OUT / data["filename"]
     jpg_path = OUT / data["filename"].replace(".png", ".jpg")
+    raw_path = OUT / data["filename"].replace(".png", ".rgb565")
 
     img.save(png_path, "PNG")
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
+    save_rgb565_raw(img, raw_path)
 
+def save_rgb565_raw(img, path):
+    with open(path, "wb") as f:
+        for y in range(240):
+            for x in range(240):
+                r, g, b = img.getpixel((x, y))
+
+                v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+                # U Ciebie LCD działał poprawnie z zamienionymi bajtami.
+                f.write(bytes([v & 0xFF, v >> 8]))
 
 def write_index(screens, source_info):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
