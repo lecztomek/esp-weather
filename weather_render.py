@@ -141,13 +141,37 @@ def draw_icon_storm(draw, cx, cy):
 
 
 def draw_icon_fog(draw, cx, cy):
-    draw_icon_cloud(draw, cx, cy - 8)
+    fog = (150, 165, 185)
+    fog_dark = (115, 130, 150)
+    fog_light = (205, 215, 225)
 
-    fog = (135, 150, 170)
+    # Delikatne tło mgły
+    draw.ellipse(
+        (cx - 25, cy - 14, cx + 25, cy + 18),
+        fill=(238, 242, 247),
+        outline=None,
+    )
 
-    for i, y in enumerate([cy + 20, cy + 27, cy + 34]):
-        offset = 0 if i % 2 == 0 else 7
-        draw.line((cx - 24 + offset, y, cx + 24, y), fill=fog, width=3)
+    # Główne poziome pasma mgły
+    lines = [
+        (cy - 10, -20, 24, fog_light, 3),
+        (cy - 3, -26, 18, fog, 4),
+        (cy + 5, -18, 26, fog_dark, 4),
+        (cy + 13, -25, 20, fog, 4),
+        (cy + 21, -16, 24, fog_light, 3),
+    ]
+
+    for y, x_start, x_end, color, width in lines:
+        draw.line(
+            (cx + x_start, y, cx + x_end, y),
+            fill=color,
+            width=width,
+        )
+
+    # Krótsze przesunięte kreski, żeby nie wyglądało jak zwykłe linie
+    draw.line((cx - 28, cy + 3, cx - 20, cy + 3), fill=fog, width=4)
+    draw.line((cx + 22, cy - 3, cx + 29, cy - 3), fill=fog, width=4)
+    draw.line((cx - 27, cy + 16, cx - 19, cy + 16), fill=fog_light, width=3)
 
 
 def draw_icon_sleet(draw, cx, cy):
