@@ -362,10 +362,8 @@ def build_screens_from_forecast(data):
             if not bucket:
                 continue
 
-            # Temperatura: bierzemy godzinę startową, jeśli istnieje.
-            # Jeśli jej nie ma, bierzemy pierwszy rekord z przedziału.
-            exact = [r for r in bucket if r["hour"] == start_hour]
-            temp_row = exact[0] if exact else bucket[0]
+            # Temperatura: średnia z całego przedziału.
+            temp_avg = sum(float(r["temp"]) for r in bucket) / len(bucket)
 
             # Opad: suma z całego przedziału.
             rain_sum = sum(float(r["rain"] or 0) for r in bucket)
@@ -373,7 +371,7 @@ def build_screens_from_forecast(data):
             # Kody: wszystkie kody z przedziału, żeby ikona dnia wiedziała o deszczu/burzy itd.
             bucket_codes = [int(r["code"]) for r in bucket]
 
-            temps.append(int(round(temp_row["temp"])))
+            temps.append(int(round(temp_avg)))
             rain.append(round(rain_sum, 1))
             codes.extend(bucket_codes)
             hours.append(f"{start_hour:02d}")
