@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, timedelta
+from datetime import datetime
 
 OUT = Path("public")
 OUT.mkdir(exist_ok=True)
@@ -66,7 +66,12 @@ def draw_icon_sun(draw, cx, cy):
     ]:
         draw.line((cx, cy, cx + dx, cy + dy), fill=ray, width=3)
 
-    draw.ellipse((cx - 11, cy - 11, cx + 11, cy + 11), fill=color, outline=(245, 180, 40), width=2)
+    draw.ellipse(
+        (cx - 11, cy - 11, cx + 11, cy + 11),
+        fill=color,
+        outline=(245, 180, 40),
+        width=2,
+    )
 
 
 def draw_icon_cloud(draw, cx, cy):
@@ -82,7 +87,6 @@ def draw_icon_cloud(draw, cx, cy):
 def draw_icon_partly(draw, cx, cy):
     draw_icon_sun(draw, cx - 8, cy - 5)
 
-    # Chmurka na wierzchu
     fill = (235, 240, 248)
     outline = (160, 175, 195)
 
@@ -110,6 +114,59 @@ def draw_icon_snow(draw, cx, cy):
         y = cy + 27
         draw.line((x - 4, y, x + 4, y), fill=blue, width=2)
         draw.line((x, y - 4, x, y + 4), fill=blue, width=2)
+        draw.line((x - 3, y - 3, x + 3, y + 3), fill=blue, width=2)
+        draw.line((x - 3, y + 3, x + 3, y - 3), fill=blue, width=2)
+
+
+def draw_icon_storm(draw, cx, cy):
+    draw_icon_cloud(draw, cx, cy - 6)
+
+    yellow = (255, 205, 45)
+    outline = (210, 150, 20)
+    blue = (45, 135, 215)
+
+    bolt = [
+        (cx + 2, cy + 13),
+        (cx - 8, cy + 29),
+        (cx + 1, cy + 28),
+        (cx - 5, cy + 43),
+        (cx + 13, cy + 21),
+        (cx + 4, cy + 22),
+    ]
+
+    draw.polygon(bolt, fill=yellow, outline=outline)
+
+    for x in [cx - 16, cx + 18]:
+        draw.line((x, cy + 23, x - 4, cy + 33), fill=blue, width=3)
+
+
+def draw_icon_fog(draw, cx, cy):
+    draw_icon_cloud(draw, cx, cy - 8)
+
+    fog = (135, 150, 170)
+
+    for i, y in enumerate([cy + 20, cy + 27, cy + 34]):
+        offset = 0 if i % 2 == 0 else 7
+        draw.line((cx - 24 + offset, y, cx + 24, y), fill=fog, width=3)
+
+
+def draw_icon_sleet(draw, cx, cy):
+    draw_icon_cloud(draw, cx, cy - 6)
+
+    blue = (45, 135, 215)
+    ice = (80, 160, 220)
+
+    # Krople
+    for x in [cx - 13, cx + 13]:
+        draw.line((x, cy + 22, x - 4, cy + 32), fill=blue, width=3)
+
+    # Śnieżka w środku
+    x = cx
+    y = cy + 29
+    draw.line((x - 4, y, x + 4, y), fill=ice, width=2)
+    draw.line((x, y - 4, x, y + 4), fill=ice, width=2)
+    draw.line((x - 3, y - 3, x + 3, y + 3), fill=ice, width=2)
+    draw.line((x - 3, y + 3, x + 3, y - 3), fill=ice, width=2)
 
 
 def draw_weather_icon(draw, weather, cx, cy):
@@ -117,38 +174,81 @@ def draw_weather_icon(draw, weather, cx, cy):
         draw_icon_sun(draw, cx, cy)
     elif weather == "partly":
         draw_icon_partly(draw, cx, cy)
+    elif weather == "cloud":
+        draw_icon_cloud(draw, cx, cy)
     elif weather == "rain":
         draw_icon_rain(draw, cx, cy)
     elif weather == "snow":
         draw_icon_snow(draw, cx, cy)
+    elif weather == "storm":
+        draw_icon_storm(draw, cx, cy)
+    elif weather == "fog":
+        draw_icon_fog(draw, cx, cy)
+    elif weather == "sleet":
+        draw_icon_sleet(draw, cx, cy)
     else:
         draw_icon_cloud(draw, cx, cy)
 
 
-def make_test_day(day_offset):
-    if day_offset == 0:
-        temps = [-1, -2, -1, 2, 5, 4, 2, 1]
-        rain = [0, 0, 0, 0, 0, 1, 2, 1]
-        weather = "partly"
-        title = "DZISIAJ"
-    elif day_offset == 1:
-        temps = [1, 0, 0, 3, 6, 5, 3, 2]
-        rain = [0, 0, 0, 0, 0, 0, 1, 2]
-        weather = "sun"
-        title = "JUTRO"
-    else:
-        temps = [0, -1, -1, 1, 3, 2, 1, 0]
-        rain = [0, 0, 1, 2, 3, 2, 1, 0]
-        weather = "rain"
-        title = "POJUTRZE"
-
-    return {
-        "filename": f"screen_{day_offset}.png",
-        "title": title,
-        "temps": temps,
-        "rain": rain,
-        "weather": weather,
-    }
+def make_demo_screens():
+    return [
+        {
+            "filename": "screen_0.png",
+            "title": "DZISIAJ",
+            "weather": "partly",
+            "temps": [-1, -2, -1, 2, 5, 4, 2, 1],
+            "rain": [0, 0, 0, 0, 0, 1, 2, 1],
+        },
+        {
+            "filename": "screen_1.png",
+            "title": "JUTRO",
+            "weather": "sun",
+            "temps": [1, 0, 0, 3, 6, 5, 3, 2],
+            "rain": [0, 0, 0, 0, 0, 0, 1, 2],
+        },
+        {
+            "filename": "screen_2.png",
+            "title": "POJUTRZE",
+            "weather": "rain",
+            "temps": [0, -1, -1, 1, 3, 2, 1, 0],
+            "rain": [0, 0, 1, 2, 3, 2, 1, 0],
+        },
+        {
+            "filename": "screen_3.png",
+            "title": "CHMURY",
+            "weather": "cloud",
+            "temps": [2, 2, 1, 3, 4, 4, 3, 2],
+            "rain": [0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        {
+            "filename": "screen_4.png",
+            "title": "SNIEG",
+            "weather": "snow",
+            "temps": [-4, -5, -5, -3, -1, -2, -3, -4],
+            "rain": [1, 1, 2, 3, 2, 1, 1, 0],
+        },
+        {
+            "filename": "screen_5.png",
+            "title": "BURZA",
+            "weather": "storm",
+            "temps": [15, 14, 14, 17, 22, 24, 20, 17],
+            "rain": [0, 0, 1, 3, 8, 12, 6, 2],
+        },
+        {
+            "filename": "screen_6.png",
+            "title": "MGLA",
+            "weather": "fog",
+            "temps": [1, 0, 0, 1, 3, 4, 3, 2],
+            "rain": [0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        {
+            "filename": "screen_7.png",
+            "title": "DESZCZ SN",
+            "weather": "sleet",
+            "temps": [1, 1, 0, 1, 2, 1, 0, 0],
+            "rain": [0, 1, 2, 3, 2, 2, 1, 0],
+        },
+    ]
 
 
 def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
@@ -251,14 +351,14 @@ def draw_screen(data):
         fill=(36, 84, 150),
     )
 
-    # Ikona rysowana kształtami, nie emoji
     draw_weather_icon(d, data["weather"], 35, 27)
 
-    # Tytuł
     title = data["title"]
     bbox = d.textbbox((0, 0), title, font=font_title)
     tw = bbox[2] - bbox[0]
-    d.text((136 - tw // 2, 16), title, font=font_title, fill=(255, 255, 255))
+
+    # Lekko przesunięte w prawo, bo ikona jest po lewej
+    d.text((138 - tw // 2, 16), title, font=font_title, fill=(255, 255, 255))
 
     # Sekcja godzin i temperatur
     x0, x1 = 11, 229
@@ -288,13 +388,9 @@ def draw_screen(data):
 
     d.line((13, 104, 227, 104), fill=(225, 232, 240), width=1)
 
-    # Wykres temperatury
     draw_temperature_chart(d, data["temps"], 12, 111, 228, 164)
-
-    # Słupki opadów
     draw_rain_bars(d, data["rain"], 12, 172, 228, 224)
 
-    # Zapis
     png_path = OUT / data["filename"]
     jpg_path = OUT / data["filename"].replace(".png", ".jpg")
 
@@ -302,8 +398,28 @@ def draw_screen(data):
     img.convert("RGB").save(jpg_path, "JPEG", quality=92)
 
 
-def write_index():
+def write_index(screens):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    cards = []
+
+    for screen in screens:
+        title = screen["title"]
+        filename = screen["filename"]
+        weather = screen["weather"]
+
+        cards.append(
+            f"""
+    <div class="card">
+      <h3>{title}</h3>
+      <img src="{filename}">
+      <p><code>{filename}</code></p>
+      <p class="muted">ikona: <code>{weather}</code></p>
+    </div>
+"""
+        )
+
+    cards_html = "\n".join(cards)
 
     html = f"""<!doctype html>
 <html lang="pl">
@@ -339,6 +455,10 @@ def write_index():
       padding: 2px 6px;
       border-radius: 6px;
     }}
+    .muted {{
+      color: #6b7280;
+      margin-top: -4px;
+    }}
   </style>
 </head>
 <body>
@@ -346,23 +466,7 @@ def write_index():
   <p>Wygenerowano: <strong>{generated}</strong></p>
 
   <div class="screens">
-    <div class="card">
-      <h3>Dzisiaj</h3>
-      <img src="screen_0.png">
-      <p><code>screen_0.png</code></p>
-    </div>
-
-    <div class="card">
-      <h3>Jutro</h3>
-      <img src="screen_1.png">
-      <p><code>screen_1.png</code></p>
-    </div>
-
-    <div class="card">
-      <h3>Pojutrze</h3>
-      <img src="screen_2.png">
-      <p><code>screen_2.png</code></p>
-    </div>
+{cards_html}
   </div>
 </body>
 </html>
@@ -372,10 +476,13 @@ def write_index():
 
 
 def main():
-    for day_offset in range(3):
-        draw_screen(make_test_day(day_offset))
+    screens = make_demo_screens()
 
-    write_index()
+    for screen in screens:
+        draw_screen(screen)
+
+    write_index(screens)
+
     print("Generated screens in public/")
 
 
