@@ -13,7 +13,7 @@ LATITUDE = 49.6175
 LONGITUDE = 20.7153
 TIMEZONE = "Europe/Warsaw"
 
-HOURS_WANTED = ["00", "03", "06", "09", "12", "15", "18", "21"]
+HOURS_WANTED = ["00", "04", "08", "12", "16", "20"]
 
 DAY_TITLES = ["DZISIAJ", "JUTRO", "POJUTRZE"]
 
@@ -41,9 +41,9 @@ def load_font(size, bold=False):
 
 font_title = load_font(25, bold=True)
 font_small = load_font(10)
-font_axis = load_font(10)
-font_temp = load_font(12, bold=True)
-font_mm = load_font(10)
+font_axis = load_font(12)
+font_temp = load_font(14, bold=True)
+font_mm = load_font(12)
 
 
 def text_center(draw, box, text, font, fill):
