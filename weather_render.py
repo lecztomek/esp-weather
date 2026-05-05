@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, date
+from datetime import datetime
 import requests
 
 OUT = Path("public")
@@ -8,7 +8,7 @@ OUT.mkdir(exist_ok=True)
 
 W, H = 240, 240
 
-# Nowy Sącz mniej więcej
+# Nowy Sącz
 LATITUDE = 49.6175
 LONGITUDE = 20.7153
 TIMEZONE = "Europe/Warsaw"
@@ -196,15 +196,6 @@ def draw_weather_icon(draw, weather, cx, cy):
 
 
 def map_weather_code(code):
-    # Open-Meteo WMO weather codes:
-    # 0 clear
-    # 1,2 partly cloudy
-    # 3 overcast
-    # 45,48 fog
-    # 51-67 drizzle/rain/freezing rain
-    # 71-86 snow
-    # 95-99 thunderstorm
-
     if code == 0:
         return "sun"
 
@@ -280,7 +271,6 @@ def build_screens_from_forecast(data):
     by_day = {}
 
     for t, temp, rain, code in zip(times, temperatures, precipitation, weather_codes):
-        # Format z Open-Meteo: YYYY-MM-DDTHH:MM
         day_str = t[:10]
         hour_str = t[11:13]
 
@@ -302,7 +292,6 @@ def build_screens_from_forecast(data):
     for idx, day_str in enumerate(days):
         rows = sorted(by_day[day_str], key=lambda x: x["hour"])
 
-        # Gdyby API z jakiegoś powodu nie dało kompletu godzin, uzupełniamy bez crasha.
         row_by_hour = {r["hour"]: r for r in rows}
         final_rows = []
 
@@ -327,6 +316,7 @@ def build_screens_from_forecast(data):
                 "temps": temps,
                 "rain": rain,
                 "hours": [r["hour"] for r in final_rows],
+                "codes": codes,
                 "source_date": day_str,
             }
         )
@@ -334,7 +324,7 @@ def build_screens_from_forecast(data):
     return screens
 
 
-def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
+def draw_combined_chart(draw, temps, rain, x0, y0, x1, y1):
     min_t = min(temps)
     max_t = max(temps)
 
@@ -347,22 +337,59 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
 
     draw.rounded_rectangle(
         (x0, y0, x1, y1),
-        radius=8,
+        radius=10,
         fill=(246, 249, 253),
         outline=(220, 228, 238),
     )
 
-    for i in range(1, 3):
-        gy = y0 + i * (y1 - y0) // 3
-        draw.line((x0 + 5, gy, x1 - 5, gy), fill=(228, 234, 242), width=1)
+    # Linie pomocnicze
+    for i in range(1, 4):
+        gy = y0 + i * (y1 - y0) // 4
+        draw.line((x0 + 7, gy, x1 - 7, gy), fill=(228, 234, 242), width=1)
 
-    points = []
     n = len(temps)
 
+    chart_left = x0 + 13
+    chart_right = x1 - 13
+    chart_top = y0 + 14
+    chart_bottom = y1 - 22
+
+    chart_w = chart_right - chart_left
+    chart_h = chart_bottom - chart_top
+
+    # Opady jako słupki w tle
+    max_rain = max(max(rain), 1)
+    gap = 4
+    bar_w = max(5, int((chart_w - gap * (n - 1)) / n))
+
+    for i, mm in enumerate(rain):
+        cx = chart_left + i * (chart_w / max(n - 1, 1))
+        bh = int((mm / max_rain) * (chart_h * 0.72))
+
+        bx0 = int(cx - bar_w / 2)
+        bx1 = int(cx + bar_w / 2)
+        by0 = int(chart_bottom - bh)
+
+        if mm > 0:
+            draw.rounded_rectangle(
+                (bx0, by0, bx1, chart_bottom),
+                radius=2,
+                fill=(90, 170, 230),
+            )
+        else:
+            draw.line(
+                (bx0, chart_bottom, bx1, chart_bottom),
+                fill=(185, 205, 225),
+                width=1,
+            )
+
+    # Temperatura jako linia
+    points = []
+
     for i, temp in enumerate(temps):
-        x = x0 + 10 + i * ((x1 - x0 - 20) / max(n - 1, 1))
+        x = chart_left + i * (chart_w / max(n - 1, 1))
         ratio = (temp - min_t) / (max_t - min_t)
-        y = y1 - 8 - ratio * (y1 - y0 - 16)
+        y = chart_bottom - ratio * chart_h
         points.append((int(x), int(y)))
 
     draw_polyline(draw, points, fill=(230, 100, 35), width=3)
@@ -370,49 +397,27 @@ def draw_temperature_chart(draw, temps, x0, y0, x1, y1):
     for x, y in points:
         draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(230, 100, 35))
 
-    draw.text((x0 + 6, y0 + 3), f"{max(temps)}°", font=font_small, fill=(120, 130, 145))
-    draw.text((x0 + 6, y1 - 14), f"{min(temps)}°", font=font_small, fill=(120, 130, 145))
+    # Min/max temperatury
+    draw.text((x0 + 7, y0 + 4), f"{max(temps)}°", font=font_small, fill=(120, 130, 145))
+    draw.text((x0 + 7, y1 - 17), f"{min(temps)}°", font=font_small, fill=(120, 130, 145))
 
+    # Oznaczenie opadów
+    draw.text((x1 - 48, y0 + 4), "mm", font=font_small, fill=(50, 110, 170))
 
-def draw_rain_bars(draw, rain, x0, y0, x1, y1):
-    draw.rounded_rectangle(
-        (x0, y0, x1, y1),
-        radius=8,
-        fill=(246, 249, 253),
-        outline=(220, 228, 238),
-    )
-
-    max_rain = max(max(rain), 1)
-
-    n = len(rain)
-    usable_w = x1 - x0 - 16
-    gap = 3
-    bar_w = max(4, int((usable_w - gap * (n - 1)) / n))
-
-    base_y = y1 - 17
-    top_y = y0 + 8
-    chart_h = base_y - top_y
-
+    # Wartości opadów na dole
     for i, mm in enumerate(rain):
-        bx = x0 + 8 + i * (bar_w + gap)
-        bh = int((mm / max_rain) * chart_h)
-        by = base_y - bh
-
-        if mm > 0:
-            draw.rounded_rectangle(
-                (bx, by, bx + bar_w, base_y),
-                radius=2,
-                fill=(40, 130, 210),
-            )
-        else:
-            draw.line((bx, base_y, bx + bar_w, base_y), fill=(190, 205, 220), width=1)
-
+        cx = chart_left + i * (chart_w / max(n - 1, 1))
         label = str(mm)
+
         bbox = draw.textbbox((0, 0), label, font=font_mm)
         tw = bbox[2] - bbox[0]
-        draw.text((bx + (bar_w - tw) // 2, y1 - 14), label, font=font_mm, fill=(70, 100, 130))
 
-    draw.text((x0 + 6, y0 + 3), "opad mm", font=font_small, fill=(70, 100, 130))
+        draw.text(
+            (int(cx - tw / 2), y1 - 15),
+            label,
+            font=font_mm,
+            fill=(50, 110, 170),
+        )
 
 
 def draw_screen(data):
@@ -469,8 +474,7 @@ def draw_screen(data):
 
     d.line((13, 104, 227, 104), fill=(225, 232, 240), width=1)
 
-    draw_temperature_chart(d, data["temps"], 12, 111, 228, 164)
-    draw_rain_bars(d, data["rain"], 12, 172, 228, 224)
+    draw_combined_chart(d, data["temps"], data["rain"], 12, 111, 228, 224)
 
     png_path = OUT / data["filename"]
     jpg_path = OUT / data["filename"].replace(".png", ".jpg")
@@ -489,6 +493,7 @@ def write_index(screens, source_info):
         filename = screen["filename"]
         weather = screen["weather"]
         source_date = screen.get("source_date", "")
+        codes = screen.get("codes", [])
 
         cards.append(
             f"""
@@ -498,6 +503,7 @@ def write_index(screens, source_info):
       <p><code>{filename}</code></p>
       <p class="muted">ikona: <code>{weather}</code></p>
       <p class="muted">data prognozy: <code>{source_date}</code></p>
+      <p class="muted">kody: <code>{codes}</code></p>
     </div>
 """
         )
@@ -569,7 +575,7 @@ def main():
     for screen in screens:
         draw_screen(screen)
 
-    source_info = f"Źródło: Open-Meteo, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
+    source_info = f"Źródło: Open-Meteo, Nowy Sącz, lat={LATITUDE}, lon={LONGITUDE}, timezone={TIMEZONE}"
     write_index(screens, source_info)
 
     print("Generated real weather screens in public/")
